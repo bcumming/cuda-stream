@@ -20,9 +20,14 @@
 #define N   (2<<26)
 #define NTIMES  20
 
+#include <string>
+#include <vector>
+
 #include <stdio.h>
 #include <float.h>
 #include <limits.h>
+#include <sys/time.h>
+
 #include <sys/time.h>
 
 # ifndef MIN
@@ -37,8 +42,6 @@ typedef double real;
 static double   avgtime[4] = {0}, maxtime[4] = {0},
         mintime[4] = {FLT_MAX,FLT_MAX,FLT_MAX,FLT_MAX};
 
-
-static char *label[4] = {"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
 
 static double   bytes[4] = {
     2 * sizeof(real) * N,
@@ -106,6 +109,8 @@ int main()
     int j,k;
     double times[4][NTIMES];
     real scalar;
+    std::vector<std::string> label{"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
+
 
     printf(" STREAM Benchmark implementation in CUDA\n");
     printf(" Array size (%s precision) =%7.2f MB\n", sizeof(double)==sizeof(real)?"double":"single", double(N)*double(sizeof(real))/1.e6);
@@ -169,7 +174,7 @@ int main()
     for (j=0; j<4; j++) {
         avgtime[j] = avgtime[j]/(double)(NTIMES-1);
 
-        printf("%s%11.4f     %11.8f  %11.8f  %11.8f\n", label[j],
+        printf("%s%11.4f     %11.8f  %11.8f  %11.8f\n", label[j].c_str(),
                 1.0E-09 * bytes[j]/mintime[j],
                 avgtime[j],
                 mintime[j],
