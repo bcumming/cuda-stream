@@ -170,6 +170,11 @@ int main(int argc, char** argv)
 
     printf(" using %d threads per block, %d blocks\n",dimBlock.x,dimGrid.x);
 
+    if (SI)
+        printf(" output in SI units (KB = 1000 B)\n");
+    else
+        printf(" output in IEC units (KiB = 1024 B)\n");
+
     /* Initialize memory on the device */
     set_array<real><<<dimGrid,dimBlock>>>(d_a, 2.f, N);
     set_array<real><<<dimGrid,dimBlock>>>(d_b, .5f, N);
@@ -220,12 +225,17 @@ int main(int argc, char** argv)
         3 * sizeof(real) * (double)N
     };
 
-    printf("Function      Rate (GB/s)   Avg time(s)  Min time(s)  Max time(s)\n");
+    // Use right units
+    const double G = SI ? 1.e9 : static_cast<double>(1<<30);
+
+    printf("\nFunction      Rate %s  Avg time(s)  Min time(s)  Max time(s)\n",
+           SI ? "(GB/s) " : "(GiB/s)" );
+    printf("-----------------------------------------------------------------\n");
     for (j=0; j<4; j++) {
         avgtime[j] = avgtime[j]/(double)(NTIMES-1);
 
         printf("%s%11.4f     %11.8f  %11.8f  %11.8f\n", label[j].c_str(),
-                1.0E-09 * bytes[j]/mintime[j],
+                bytes[j]/mintime[j] / G,
                 avgtime[j],
                 mintime[j],
                 maxtime[j]);
@@ -236,5 +246,5 @@ int main(int argc, char** argv)
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-
 }
+
