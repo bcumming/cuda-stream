@@ -17,7 +17,6 @@
   Further modifications by: Ben Cumming, CSCS
 */
 
-#define N   (2<<26)
 #define NTIMES  20
 
 #include <string>
@@ -26,6 +25,7 @@
 #include <stdio.h>
 #include <float.h>
 #include <limits.h>
+#include <unistd.h>
 #include <sys/time.h>
 
 #include <sys/time.h>
@@ -43,12 +43,51 @@ static double   avgtime[4] = {0}, maxtime[4] = {0},
         mintime[4] = {FLT_MAX,FLT_MAX,FLT_MAX,FLT_MAX};
 
 
-static double   bytes[4] = {
-    2 * sizeof(real) * N,
-    2 * sizeof(real) * N,
-    3 * sizeof(real) * N,
-    3 * sizeof(real) * N
-};
+void print_help()
+{
+    printf(
+        "Usage: stream [-s] [-n <elements>] [-b <blocksize>]\n\n"
+        "  -s\n"
+        "        Print results in SI units (by default IEC units are used)\n\n"
+        "  -n <elements>\n"
+        "        Put <elements> values in the arrays\n"
+        "        (defaults to 1<<26)\n\n"
+        "  -b <blocksize>\n"
+        "        Use <blocksize> as the number of threads in each block\n"
+        "        (defaults to 192)\n"
+    );
+}
+
+void parse_options(int argc, char** argv, bool& SI, int& N, int& blockSize)
+{
+    // Default values
+    SI = false;
+    N = 1<<26;
+    blockSize = 192;
+
+    int c;
+
+    while ((c = getopt (argc, argv, "sn:b:h")) != -1)
+        switch (c)
+        {
+            case 's':
+                SI = true;
+                break;
+            case 'n':
+                N = std::atoi(optarg);
+                break;
+            case 'b':
+                blockSize = std::atoi(optarg);
+                break;
+            case 'h':
+                print_help();
+                std::exit(0);
+                break;
+            default:
+                print_help();
+                std::exit(1);
+        }
+}
 
 /* A gettimeofday routine to give access to the wall
    clock timer on most UNIX-like systems.  */
@@ -103,7 +142,7 @@ __global__ void STREAM_Triad( T *a, T *b, T *c, T scalar, int len)
         c[idx] = a[idx]+scalar*b[idx];
 }
 
-int main()
+int main(int argc, char** argv)
 {
     real *d_a, *d_b, *d_c;
     int j,k;
@@ -111,6 +150,10 @@ int main()
     real scalar;
     std::vector<std::string> label{"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
 
+    // Parse arguments
+    bool SI;
+    int N, blockSize;
+    parse_options(argc, argv, SI, N, blockSize);
 
     printf(" STREAM Benchmark implementation in CUDA\n");
     printf(" Array size (%s precision) =%7.2f MB\n", sizeof(double)==sizeof(real)?"double":"single", double(N)*double(sizeof(real))/1.e6);
@@ -121,7 +164,7 @@ int main()
     cudaMalloc((void**)&d_c, sizeof(real)*N);
 
     /* Compute execution configuration */
-    dim3 dimBlock(192);
+    dim3 dimBlock(blockSize);
     dim3 dimGrid(N/dimBlock.x );
     if( N % dimBlock.x != 0 ) dimGrid.x+=1;
 
@@ -169,6 +212,13 @@ int main()
             maxtime[j] = MAX(maxtime[j], times[j][k]);
         }
     }
+
+    double bytes[4] = {
+        2 * sizeof(real) * (double)N,
+        2 * sizeof(real) * (double)N,
+        3 * sizeof(real) * (double)N,
+        3 * sizeof(real) * (double)N
+    };
 
     printf("Function      Rate (GB/s)   Avg time(s)  Min time(s)  Max time(s)\n");
     for (j=0; j<4; j++) {
