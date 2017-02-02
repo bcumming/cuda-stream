@@ -7,14 +7,14 @@
     TRIAD:      a(i) = b(i) + q*c(i)        
 
   It measures the memory system on the device.
-  The implementation is in single precision.
+  The implementation is in double precision.
 
   Code based on the code developed by John D. McCalpin
   http://www.cs.virginia.edu/stream/FTP/Code/stream.c
 
   Written by: Massimiliano Fatica, NVIDIA Corporation
 
-  Further modifications by: Ben Cumming, CSCS
+  Further modifications by: Ben Cumming, CSCS; Andreas Herten (JSC/FZJ)
 */
 
 #define N   (2<<26)
