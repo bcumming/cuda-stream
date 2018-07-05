@@ -21,6 +21,8 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <sstream>
 
 #include <stdio.h>
 #include <float.h>
@@ -29,6 +31,20 @@
 #include <sys/time.h>
 
 #include <sys/time.h>
+
+    
+#define CUDA_SAFE_CALL(expr)                                    \
+    do {                                                        \
+        cudaError_t err = (expr);                               \
+        if (err != cudaSuccess) {                               \
+            std::cerr << "[Error] '" << expr << "' failed : "   \
+                      << cudaGetErrorString(err)                \
+                      << "(error code: " << err << ")"          \
+                      << " at " << __FILE__ << ":" << __LINE__  \
+                      << std::endl;                             \
+            exit(err);                                          \
+        }                                                       \
+    } while(0)
 
 # ifndef MIN
 # define MIN(x,y) ((x)<(y)?(x):(y))
@@ -58,12 +74,13 @@ void print_help()
     );
 }
 
-void parse_options(int argc, char** argv, bool& SI, int& N, int& blockSize)
+void parse_options(int argc, char** argv, bool& SI, size_t& N, int& blockSize)
 {
     // Default values
     SI = false;
     N = 1<<26;
     blockSize = 192;
+    std::stringstream ss;
 
     int c;
 
@@ -74,7 +91,8 @@ void parse_options(int argc, char** argv, bool& SI, int& N, int& blockSize)
                 SI = true;
                 break;
             case 'n':
-                N = std::atoi(optarg);
+                ss << optarg;
+                ss >> N;
                 break;
             case 'b':
                 blockSize = std::atoi(optarg);
@@ -103,41 +121,41 @@ double mysecond()
 
 
 template <typename T>
-__global__ void set_array(T * __restrict__ const a, T value, int len)
+__global__ void set_array(T * __restrict__ const a, T value, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < len)
         a[idx] = value;
 }
 
 template <typename T>
-__global__ void STREAM_Copy(T const * __restrict__ const a, T * __restrict__ const b, int len)
+__global__ void STREAM_Copy(T const * __restrict__ const a, T * __restrict__ const b, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < len)
         b[idx] = a[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Scale(T const * __restrict__ const a, T * __restrict__ const b, T scale,  int len)
+__global__ void STREAM_Scale(T const * __restrict__ const a, T * __restrict__ const b, T scale,  size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < len)
         b[idx] = scale * a[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Add(T const * __restrict__ const a, T const * __restrict__ const b, T * __restrict__ const c, int len)
+__global__ void STREAM_Add(T const * __restrict__ const a, T const * __restrict__ const b, T * __restrict__ const c, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < len)
         c[idx] = a[idx] + b[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Triad(T const * __restrict__ a, T const * __restrict__ b, T * __restrict__ const c, T scalar, int len)
+__global__ void STREAM_Triad(T const * __restrict__ a, T const * __restrict__ b, T * __restrict__ const c, T scalar, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < len)
         c[idx] = a[idx] + scalar * b[idx];
 }
@@ -152,22 +170,25 @@ int main(int argc, char** argv)
 
     // Parse arguments
     bool SI;
-    int N, blockSize;
+    size_t N;
+    int  blockSize;
     parse_options(argc, argv, SI, N, blockSize);
 
     printf(" STREAM Benchmark implementation in CUDA\n");
     printf(" Array size (%s precision) =%7.2f MB\n", sizeof(double)==sizeof(real)?"double":"single", double(N)*double(sizeof(real))/1.e6);
 
     /* Allocate memory on device */
-    cudaMalloc((void**)&d_a, sizeof(real)*N);
-    cudaMalloc((void**)&d_b, sizeof(real)*N);
-    cudaMalloc((void**)&d_c, sizeof(real)*N);
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_a, sizeof(real)*N));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_b, sizeof(real)*N));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_c, sizeof(real)*N));
 
     /* Compute execution configuration */
     dim3 dimBlock(blockSize);
-    dim3 dimGrid(N/dimBlock.x );
-    if( N % dimBlock.x != 0 ) dimGrid.x+=1;
-
+    dim3 dimGrid(N / dimBlock.x);
+    if( N % dimBlock.x != 0 ) {
+        dimGrid.x += 1;
+    }
+    
     printf(" using %d threads per block, %d blocks\n",dimBlock.x,dimGrid.x);
 
     if (SI)
@@ -177,8 +198,11 @@ int main(int argc, char** argv)
 
     /* Initialize memory on the device */
     set_array<real><<<dimGrid,dimBlock>>>(d_a, 2.f, N);
+    CUDA_SAFE_CALL(cudaThreadSynchronize());
     set_array<real><<<dimGrid,dimBlock>>>(d_b, .5f, N);
+    CUDA_SAFE_CALL(cudaThreadSynchronize());
     set_array<real><<<dimGrid,dimBlock>>>(d_c, .5f, N);
+    CUDA_SAFE_CALL(cudaThreadSynchronize());
 
     /*  --- MAIN LOOP --- repeat test cases NTIMES times --- */
 
@@ -187,22 +211,22 @@ int main(int argc, char** argv)
     {
         times[0][k]= mysecond();
         STREAM_Copy<real><<<dimGrid,dimBlock>>>(d_a, d_c, N);
-        cudaThreadSynchronize();
+        CUDA_SAFE_CALL(cudaThreadSynchronize());
         times[0][k]= mysecond() -  times[0][k];
 
         times[1][k]= mysecond();
         STREAM_Scale<real><<<dimGrid,dimBlock>>>(d_b, d_c, scalar,  N);
-        cudaThreadSynchronize();
+        CUDA_SAFE_CALL(cudaThreadSynchronize());
         times[1][k]= mysecond() -  times[1][k];
 
         times[2][k]= mysecond();
         STREAM_Add<real><<<dimGrid,dimBlock>>>(d_a, d_b, d_c,  N);
-        cudaThreadSynchronize();
+        CUDA_SAFE_CALL(cudaThreadSynchronize());
         times[2][k]= mysecond() -  times[2][k];
 
         times[3][k]= mysecond();
         STREAM_Triad<real><<<dimGrid,dimBlock>>>(d_b, d_c, d_a, scalar,  N);
-        cudaThreadSynchronize();
+        CUDA_SAFE_CALL(cudaThreadSynchronize());
         times[3][k]= mysecond() -  times[3][k];
     }
 
