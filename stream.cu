@@ -187,22 +187,22 @@ int main(int argc, char** argv)
     {
         times[0][k]= mysecond();
         STREAM_Copy<real><<<dimGrid,dimBlock>>>(d_a, d_c, N);
-        cudaThreadSynchronize();
+        cudaDeviceSynchronize();
         times[0][k]= mysecond() -  times[0][k];
 
         times[1][k]= mysecond();
         STREAM_Scale<real><<<dimGrid,dimBlock>>>(d_b, d_c, scalar,  N);
-        cudaThreadSynchronize();
+        cudaDeviceSynchronize();
         times[1][k]= mysecond() -  times[1][k];
 
         times[2][k]= mysecond();
         STREAM_Add<real><<<dimGrid,dimBlock>>>(d_a, d_b, d_c,  N);
-        cudaThreadSynchronize();
+        cudaDeviceSynchronize();
         times[2][k]= mysecond() -  times[2][k];
 
         times[3][k]= mysecond();
         STREAM_Triad<real><<<dimGrid,dimBlock>>>(d_b, d_c, d_a, scalar,  N);
-        cudaThreadSynchronize();
+        cudaDeviceSynchronize();
         times[3][k]= mysecond() -  times[3][k];
     }
 
