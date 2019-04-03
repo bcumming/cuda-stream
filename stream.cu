@@ -14,7 +14,8 @@
 
   Written by: Massimiliano Fatica, NVIDIA Corporation
 
-  Further modifications by: Ben Cumming, CSCS; Andreas Herten (JSC/FZJ)
+  Further modifications by: Ben Cumming, CSCS; Andreas Herten (JSC/FZJ);
+  Prashanth Kanduri, CSCS
 */
 
 #define NTIMES  20
@@ -146,7 +147,7 @@ int main(int argc, char** argv)
 {
     real *d_a, *d_b, *d_c;
     int j,k;
-    double times[4][NTIMES];
+    float times[4][NTIMES];
     real scalar;
     std::vector<std::string> label{"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
 
@@ -181,31 +182,39 @@ int main(int argc, char** argv)
     set_array<real><<<dimGrid,dimBlock>>>(d_c, .5f, N);
 
     /*  --- MAIN LOOP --- repeat test cases NTIMES times --- */
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
 
     scalar=3.0f;
     for (k=0; k<NTIMES; k++)
     {
-        times[0][k]= mysecond();
+        cudaEventRecord(start);
         STREAM_Copy<real><<<dimGrid,dimBlock>>>(d_a, d_c, N);
-        cudaThreadSynchronize();
-        times[0][k]= mysecond() -  times[0][k];
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&times[0][k], start, stop);
 
-        times[1][k]= mysecond();
+        cudaEventRecord(start);
         STREAM_Scale<real><<<dimGrid,dimBlock>>>(d_b, d_c, scalar,  N);
-        cudaThreadSynchronize();
-        times[1][k]= mysecond() -  times[1][k];
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&times[1][k], start, stop);
 
-        times[2][k]= mysecond();
+        cudaEventRecord(start);
         STREAM_Add<real><<<dimGrid,dimBlock>>>(d_a, d_b, d_c,  N);
-        cudaThreadSynchronize();
-        times[2][k]= mysecond() -  times[2][k];
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&times[2][k], start, stop);
 
-        times[3][k]= mysecond();
+        cudaEventRecord(start);
         STREAM_Triad<real><<<dimGrid,dimBlock>>>(d_b, d_c, d_a, scalar,  N);
-        cudaThreadSynchronize();
-        times[3][k]= mysecond() -  times[3][k];
-    }
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&times[3][k], start, stop);
 
+    }
     /*  --- SUMMARY --- */
 
     for (k=1; k<NTIMES; k++) /* note -- skip first iteration */
@@ -235,10 +244,10 @@ int main(int argc, char** argv)
         avgtime[j] = avgtime[j]/(double)(NTIMES-1);
 
         printf("%s%11.4f     %11.8f  %11.8f  %11.8f\n", label[j].c_str(),
-                bytes[j]/mintime[j] / G,
-                avgtime[j],
-                mintime[j],
-                maxtime[j]);
+                1e3*bytes[j]/mintime[j] / G,
+                1e-3*avgtime[j],
+                1e-3*mintime[j],
+                1e-3*maxtime[j]);
     }
 
 
